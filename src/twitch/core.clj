@@ -75,7 +75,7 @@
                               type     ; 'all', 'playlist', 'live'
                               lang     ; language
                               ]}])
-  (featured-streams []))
+  (featured-streams [session]))
 
 (defprotocol Subscriptions
   (channel-subscribers [session channel])
