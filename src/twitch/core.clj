@@ -12,7 +12,10 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 
-(ns twitch.core)
+(ns twitch.core
+  (:require [clj-http.client :as http]
+            [clojure.data.json :as json]
+            [dire.core :refer [with-postcondition! with-handler!]]))
 
 (def endpoint "https://api.twitch.tv/kraken")
 (def api-version ".v3")
@@ -20,34 +23,60 @@
 
 (defrecord Session
     [endpoint     ; Base http url
+     mime-type    ; mime-type header
      client-id    ; Twitch app id
      access-token ; Auth token
-    ])
+  ])
 
+(defn make-session [client-id access-token]
+  (->Session endpoint mime-type client-id access-token))
 
-(defn make-session [client_id acc_token]
-  (->Session endpoint
-             client_id
-             acc_token))
+(defn get [session url]
+  (try
+    (let [rsp (http/get (str (:endpoint session) url)
+                        {:headers {"Accept" (:mime-type session)}})]
+      (assoc rsp :body (json/read-str (:body rsp))))
+    (catch Exception e (ex-data e))))
 
+(defn put [session url data]
+  (try
+    (http/put (str (:endpoint session) url)
+              {:headers {"Accept" (:mime-type session)}
+               :body (str data)})
+    (catch Exception e (ex-data e))))
 
+(defn post [session url data]
+  (try
+    (http/post (str (:endpoint session) url)
+               {:headers {"Accept" (:mime-type session)}
+                :body (str data)})
+    (catch Exception e (ex-data e))))
+
+(defn delete [session url]
+  (try
+    (http/delete (str (:endpoint session) url)
+                 {:headers {"Accept" (:mime-type session)}})
+    (catch Exception e (ex-data e))))
+
+(with-postcondition! #'get
+  :http-200
+  (fn [rsp & args] (= (:status rsp) 200)))
+
+(with-postcondition! #'put
+  :http-200
+  (fn [rsp & args] (= (:status rsp) 200)))
+
+(with-postcondition! #'post
+  :http-200
+  (fn [rsp & args] (= (:status rsp) 200)))
+
+(with-postcondition! #'delete
+  :http-200
+  (fn [rsp & args] (= (:status rsp) 200)))
 (defprotocol Blocks
   (blocks        [session])
   (block-user!   [session target])
   (unblock-user! [session target]))
-
-(defprotocol Channels
-  (channel         [session channel])
-  (channel-videos  [session channel])
-  (channel-follows [session channel])
-  (channel-editors [session channel])
-  (update-channel! [session & {:keys [status ; channel title
-                                      game   ; game category
-                                      delay  ; delay in secs
-                                      feed_enabled]}])
-  (reset-key!      [session channel])
-  (run-ad!         [session channel length]) ; 30,60,90,120,150,180
-  (channel-teams   [session channel]))
 
 (defprotocol ChannelFeed
   (channel-posts    [session channel])
