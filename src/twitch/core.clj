@@ -37,57 +37,57 @@
   (if (s/starts-with? url "https://") url (str (:endpoint session) url)))
 
 (defn api-get
+  ([s path]
+   (api-get s path nil))
+
   ([s path rkey]
    (api-get s path rkey nil {}))
 
   ([s path rkey args hdrs]
-   (let [hdrs (merge {"Accept" (:mime-type s)})
+   (let [_ (println "rkey: " rkey)
+         hdrs (merge {"Accept" (:mime-type s)})
          params (if args {:query-params args})
          params (assoc params :headers hdrs)
          params (assoc params :debug true)
          r (http/get (make-url s path) params)
          body (json/read-str (:body r))
-         xs (get body rkey)]
-     (if-let [x (first xs)]
-       (lazy-seq (cons x (api-get s path rkey args hdrs
-                                  (assoc body rkey (rest xs))))))))
+         xs (if rkey (get body rkey) body)]
+     (if (map? xs)
+       xs
+       (if-let [x (first xs)]
+         (lazy-seq (cons (first x) (api-get s path rkey args hdrs
+                                            (assoc body rkey (rest xs)))))))))
   
   ([s path rkey args hdrs body]
-   (let [xs (get body rkey)]
+   (let [xs (if rkey (get body rkey) body)]
      (if-let [x (first xs)]
-       (lazy-seq (cons x (api-get s path rkey args hdrs
-                                  (assoc body rkey (rest xs)))))
+       (lazy-seq (cons (first x) (api-get s path rkey args hdrs
+                                          (assoc body rkey (rest xs)))))
        (if-let [next-url (get-in body ["_links" "next"])]
          (api-get s next-url rkey args hdrs)
          (if-let [cursor (get body "_cursor")]
            (api-get s path rkey (assoc args "cursor" cursor) hdrs)))))))
 
-(defn put
-  ([session url data] (put session url data {}))
+(defn api-put
+  ([session url data] (api-put session url data {}))
   ([session url data hdrs]
    (let [hdrs (merge {"Accept" (:mime-type session)})]
      (http/put (str (:endpoint session) url)
                {:headers hdrs :body (str data)}))))
 
-(defn post
-  ([session url data] (post session url data {}))
+(defn api-post
+  ([session url data] (api-post session url data {}))
   ([session url data hdrs]
    (let [hdrs (merge {"Accept" (:mime-type session)})]
      (http/post (str (:endpoint session) url)
                 {:headers hdrs :body (str data)}))))
 
-(defn delete
-  ([session url] (delete session url {}))
+(defn api-delete
+  ([session url] (api-delete session url {}))
   ([session url hdrs]
    (let [hdrs (merge {"Accept" (:mime-type session)})]
          (http/delete (str (:endpoint session) url)
                       {:headers hdrs}))))
-
-(defprotocol Chat
-  (chat-endpoints [session channel])
-  (all-emotes     [session])
-  (emote-sets     [session & {:keys [sets]}])
-  (channel-badges [session channel]))
 
 (defprotocol Follows
   (channel-followers [session channel])

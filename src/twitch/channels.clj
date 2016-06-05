@@ -17,30 +17,30 @@
   (:import [twitch.core Session]))
 
 (defprotocol Channels
-  (get        [session channel])
-  (videos     [session channel])
-  (follows    [session channel])
-  (editors    [session channel])
-  (teams      [session channel])
-  (update!    [session channel status ; channel title
-                               game   ; game category
-                               delay  ; delay in secs
-                               feed-enabled])
-  (run-ad!    [session channel length]) ; 30,60,90,120,150,180
-  (reset-key! [session channel]))
+  (get-channel [session channel])
+  (videos      [session channel])
+  (follows     [session channel])
+  (editors     [session channel])
+  (teams       [session channel])
+  (update!     [session channel status ; channel title
+                                game   ; game category
+                                delay  ; delay in secs
+                                feed-enabled])
+  (run-ad!     [session channel length]) ; 30,60,90,120,150,180
+  (reset-key!  [session channel]))
 
 
 (extend-protocol Channels
   Session
-  (get     [s ch] (c/get s (str "/channels/" ch)))
-  (videos  [s ch] (c/get s (str "/channels/" ch "/videos")))
-  (follows [s ch] (c/get s (str "/channels/" ch "/follows")))
-  (editors [s ch] (c/get s (str "/channels/" ch "/editors")))
-  (teams   [s ch] (c/get s (str "/channels/" ch "/teams")))
-  (update! [s ch status game delay feed-enabled]
-    (c/put s (str "/channels/" ch) {:channel {:status status
+  (get-channel [s ch] (c/api-get s (str "/channels/" ch)))
+  (videos      [s ch] (c/api-get s (str "/channels/" ch "/videos") "videos"))
+  (follows     [s ch] (c/api-get s (str "/channels/" ch "/follows") "follows"))
+  (editors     [s ch] (c/api-get s (str "/channels/" ch "/editors") "users"))
+  (teams       [s ch] (c/api-get s (str "/channels/" ch "/teams") "teams"))
+  (update!     [s ch status game delay feed-enabled]
+    (c/api-put s (str "/channels/" ch) {:channel {:status status
                                               :game game
                                               :delay delay
                                               :channel_feed_enabled feed-enabled}}))
-  (run-ad! [s ch secs] (c/post s (str "/channels/" ch "/commercial") secs))
-  (reset-key! [s ch] (c/delete s (str "/channels/" ch "/stream_key"))))
+  (run-ad!     [s ch secs] (c/api-post s (str "/channels/" ch "/commercial") secs))
+  (reset-key!  [s ch] (c/api-delete s (str "/channels/" ch "/stream_key"))))
