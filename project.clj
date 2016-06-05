@@ -1,4 +1,4 @@
-(defproject . "0.2.0-SNAPSHOT"
+(defproject clj-twitch "0.2.0-SNAPSHOT"
   :description "Clojure library for the twitch.tv API"
   :url "https://github.com/hatmatter/clj-twitch-api"
   :license {:name "Apache License 2.0"
