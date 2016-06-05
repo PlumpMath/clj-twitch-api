@@ -36,9 +36,9 @@
    it is a full url and ignore the session endpoint"
   (if (s/starts-with? url "https://") url (str (:endpoint session) url)))
 
-(defn offset-get
+(defn api-get
   ([s path rkey]
-   (offset-get s path rkey nil {}))
+   (api-get s path rkey nil {}))
 
   ([s path rkey args hdrs]
    (let [hdrs (merge {"Accept" (:mime-type s)})
@@ -49,39 +49,18 @@
          body (json/read-str (:body r))
          xs (get body rkey)]
      (if-let [x (first xs)]
-       (lazy-seq (cons x (offset-get s path rkey args hdrs
-                                     (assoc body rkey (rest xs))))))))
+       (lazy-seq (cons x (api-get s path rkey args hdrs
+                                  (assoc body rkey (rest xs))))))))
   
-  ([s path rkey args hdrs body]
-   (let [next-url (get-in body ["_links" "next"])
-         xs (get body rkey)]
-     (if-let [x (first xs)]
-       (lazy-seq (cons x (offset-get s path rkey args hdrs
-                                     (assoc body rkey (rest xs)))))
-       (offset-get s next-url rkey args hdrs)))))
-
-(defn cursor-get
-  ([s path rkey]
-   (cursor-get s path rkey nil {}))
-
-  ([s path rkey args hdrs]
-   (let [hdrs (merge {"Accept" (:mime-type s)})
-         params (if args {:query-params args})
-         params (assoc params :headers hdrs)
-         params (assoc params :debug true)
-         r (http/get (make-url s path) params)
-         body (json/read-str (:body r))
-         xs (get body rkey)]
-     (if-let [x (first xs)]
-       (lazy-seq (cons x (cursor-get s path rkey args hdrs
-                               (assoc body rkey (rest xs))))))))
-
   ([s path rkey args hdrs body]
    (let [xs (get body rkey)]
      (if-let [x (first xs)]
-       (lazy-seq (cons x (cursor-get s path rkey args hdrs
-                               (assoc body rkey (rest xs)))))
-       (cursor-get s path rkey (assoc args "cursor" (get body "_cursor")) hdrs)))))
+       (lazy-seq (cons x (api-get s path rkey args hdrs
+                                  (assoc body rkey (rest xs)))))
+       (if-let [next-url (get-in body ["_links" "next"])]
+         (api-get s next-url rkey args hdrs)
+         (if-let [cursor (get body "_cursor")]
+           (api-get s path rkey (assoc args "cursor" cursor) hdrs)))))))
 
 (defn put
   ([session url data] (put session url data {}))
