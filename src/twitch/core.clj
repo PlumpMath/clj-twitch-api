@@ -15,7 +15,7 @@
 (ns twitch.core
   (:require [clj-http.client :as http]
             [clojure.data.json :as json]
-            [dire.core :refer [with-postcondition! with-handler!]]))
+            [clojure.string :as s]))
 
 (def endpoint "https://api.twitch.tv/kraken")
 (def api-version ".v3")
@@ -31,60 +31,78 @@
 (defn make-session [client-id access-token]
   (->Session endpoint mime-type client-id access-token))
 
-(defn get [session url]
-  (try
-    (let [rsp (http/get (str (:endpoint session) url)
-                        {:headers {"Accept" (:mime-type session)}})]
-      (assoc rsp :body (json/read-str (:body rsp))))
-    (catch Exception e (ex-data e))))
+(defn make-url [session url]
+  "If url starts with https:// then assume
+   it is a full url and ignore the session endpoint"
+  (if (s/starts-with? url "https://") url (str (:endpoint session) url)))
 
-(defn put [session url data]
-  (try
-    (http/put (str (:endpoint session) url)
-              {:headers {"Accept" (:mime-type session)}
-               :body (str data)})
-    (catch Exception e (ex-data e))))
+(defn offset-get
+  ([s path rkey]
+   (offset-get s path rkey nil {}))
 
-(defn post [session url data]
-  (try
-    (http/post (str (:endpoint session) url)
-               {:headers {"Accept" (:mime-type session)}
-                :body (str data)})
-    (catch Exception e (ex-data e))))
+  ([s path rkey args hdrs]
+   (let [hdrs (merge {"Accept" (:mime-type s)})
+         params (if args {:query-params args})
+         params (assoc params :headers hdrs)
+         params (assoc params :debug true)
+         r (http/get (make-url s path) params)
+         body (json/read-str (:body r))
+         xs (get body rkey)]
+     (if-let [x (first xs)]
+       (lazy-seq (cons x (offset-get s path rkey args hdrs
+                                     (assoc body rkey (rest xs))))))))
+  
+  ([s path rkey args hdrs body]
+   (let [next-url (get-in body ["_links" "next"])
+         xs (get body rkey)]
+     (if-let [x (first xs)]
+       (lazy-seq (cons x (offset-get s path rkey args hdrs
+                                     (assoc body rkey (rest xs)))))
+       (offset-get s next-url rkey args hdrs)))))
 
-(defn delete [session url]
-  (try
-    (http/delete (str (:endpoint session) url)
-                 {:headers {"Accept" (:mime-type session)}})
-    (catch Exception e (ex-data e))))
+(defn cursor-get
+  ([s path rkey]
+   (cursor-get s path rkey nil {}))
 
-(with-postcondition! #'get
-  :http-200
-  (fn [rsp & args] (= (:status rsp) 200)))
+  ([s path rkey args hdrs]
+   (let [hdrs (merge {"Accept" (:mime-type s)})
+         params (if args {:query-params args})
+         params (assoc params :headers hdrs)
+         params (assoc params :debug true)
+         r (http/get (make-url s path) params)
+         body (json/read-str (:body r))
+         xs (get body rkey)]
+     (if-let [x (first xs)]
+       (lazy-seq (cons x (cursor-get s path rkey args hdrs
+                               (assoc body rkey (rest xs))))))))
 
-(with-postcondition! #'put
-  :http-200
-  (fn [rsp & args] (= (:status rsp) 200)))
+  ([s path rkey args hdrs body]
+   (let [xs (get body rkey)]
+     (if-let [x (first xs)]
+       (lazy-seq (cons x (cursor-get s path rkey args hdrs
+                               (assoc body rkey (rest xs)))))
+       (cursor-get s path rkey (assoc args "cursor" (get body "_cursor")) hdrs)))))
 
-(with-postcondition! #'post
-  :http-200
-  (fn [rsp & args] (= (:status rsp) 200)))
+(defn put
+  ([session url data] (put session url data {}))
+  ([session url data hdrs]
+   (let [hdrs (merge {"Accept" (:mime-type session)})]
+     (http/put (str (:endpoint session) url)
+               {:headers hdrs :body (str data)}))))
 
-(with-postcondition! #'delete
-  :http-200
-  (fn [rsp & args] (= (:status rsp) 200)))
-(defprotocol Blocks
-  (blocks        [session])
-  (block-user!   [session target])
-  (unblock-user! [session target]))
+(defn post
+  ([session url data] (post session url data {}))
+  ([session url data hdrs]
+   (let [hdrs (merge {"Accept" (:mime-type session)})]
+     (http/post (str (:endpoint session) url)
+                {:headers hdrs :body (str data)}))))
 
-(defprotocol ChannelFeed
-  (channel-posts    [session channel])
-  (channel-post     [session channel postid])
-  (create-post!     [session channel content share])
-  (delete-post!     [session channel postid])
-  (create-reaction! [session channel postid emoteid])
-  (delete-reaction! [session channel postid emoteid]))
+(defn delete
+  ([session url] (delete session url {}))
+  ([session url hdrs]
+   (let [hdrs (merge {"Accept" (:mime-type session)})]
+         (http/delete (str (:endpoint session) url)
+                      {:headers hdrs}))))
 
 (defprotocol Chat
   (chat-endpoints [session channel])
